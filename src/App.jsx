@@ -1,9 +1,11 @@
 import {
   BookOpen,
   Check,
+  Image,
   Loader2,
   Pencil,
   Plus,
+  Search,
   Trash2,
   X,
 } from "lucide-react";
@@ -11,6 +13,8 @@ import { useEffect, useState } from "react";
 
 function App() {
   const [books, setBooks] = useState([]);
+  const [filteredBooks, setFilteredBooks] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -19,6 +23,7 @@ function App() {
     author: "",
     genre: "",
     copies: 0,
+    cover_image: "",
   });
   const [error, setError] = useState(null);
 
@@ -29,6 +34,22 @@ function App() {
   useEffect(() => {
     fetchBooks();
   }, []);
+
+  useEffect(() => {
+    // Filter books based on search query
+    if (searchQuery.trim() === "") {
+      setFilteredBooks(books);
+    } else {
+      const query = searchQuery.toLowerCase();
+      const filtered = books.filter(
+        (book) =>
+          book.title.toLowerCase().includes(query) ||
+          book.author.toLowerCase().includes(query) ||
+          (book.genre && book.genre.toLowerCase().includes(query))
+      );
+      setFilteredBooks(filtered);
+    }
+  }, [searchQuery, books]);
 
   const fetchBooks = async () => {
     try {
@@ -43,12 +64,35 @@ function App() {
 
       const result = await response.json();
       result && setBooks(result.data);
+      setFilteredBooks(result.data || []);
       setError(null);
     } catch (err) {
       setError(err.message);
       console.error("Error fetching books:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Open WordPress Media Library
+  const openMediaLibrary = (callback) => {
+    if (typeof wp !== "undefined" && wp.media) {
+      const frame = wp.media({
+        title: "Select or Upload Book Cover",
+        button: {
+          text: "Use this image",
+        },
+        multiple: false,
+      });
+
+      frame.on("select", function () {
+        const attachment = frame.state().get("selection").first().toJSON();
+        callback(attachment.url);
+      });
+
+      frame.open();
+    } else {
+      alert("WordPress media library not available");
     }
   };
 
@@ -67,7 +111,13 @@ function App() {
         if (!response.ok) throw new Error("Failed to create book");
 
         await fetchBooks();
-        setFormData({ title: "", author: "", genre: "", copies: 0 });
+        setFormData({
+          title: "",
+          author: "",
+          genre: "",
+          copies: 0,
+          cover_image: "",
+        });
         setIsAdding(false);
         setError(null);
       } catch (err) {
@@ -84,6 +134,7 @@ function App() {
       author: book.author,
       genre: book.genre || "",
       copies: book.copies || 0,
+      cover_image: book.cover_image || "",
     });
   };
 
@@ -103,7 +154,13 @@ function App() {
 
         await fetchBooks();
         setEditingId(null);
-        setFormData({ title: "", author: "", genre: "", copies: 0 });
+        setFormData({
+          title: "",
+          author: "",
+          genre: "",
+          copies: 0,
+          cover_image: "",
+        });
         setError(null);
       } catch (err) {
         setError(err.message);
@@ -136,9 +193,16 @@ function App() {
   const handleCancel = () => {
     setIsAdding(false);
     setEditingId(null);
-    setFormData({ title: "", author: "", genre: "", copies: 0 });
+    setFormData({
+      title: "",
+      author: "",
+      genre: "",
+      copies: 0,
+      cover_image: "",
+    });
     setError(null);
   };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -180,6 +244,40 @@ function App() {
             </div>
           </div>
 
+          {/* Search Bar */}
+          <div className="bg-white border-b border-gray-200 px-8 py-4">
+            <div className="relative max-w-md">
+              <Search
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                size={20}
+              />
+              <input
+                type="text"
+                placeholder="Search by title, author, or genre..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-poppins"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+            {searchQuery && (
+              <p className="text-sm text-gray-600 mt-2 font-poppins">
+                Found{" "}
+                <span className="font-bold text-indigo-600">
+                  {filteredBooks.length}
+                </span>{" "}
+                result(s)
+              </p>
+            )}
+          </div>
+
           {/* Error Message */}
           {error && (
             <div className="bg-red-50 border-l-4 border-red-500 px-8 py-4">
@@ -195,7 +293,28 @@ function App() {
               <h3 className="text-xl font-semibold text-gray-800 mb-4 font-poppins">
                 Add New Book
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+                <div className="flex flex-col">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openMediaLibrary((url) =>
+                        setFormData({ ...formData, cover_image: url })
+                      )
+                    }
+                    className="px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl hover:border-indigo-500 transition flex items-center justify-center gap-2 font-poppins bg-white"
+                  >
+                    <Image size={18} />
+                    {formData.cover_image ? "Change" : "Upload"} Cover
+                  </button>
+                  {formData.cover_image && (
+                    <img
+                      src={formData.cover_image}
+                      alt="Cover preview"
+                      className="mt-2 w-full h-20 object-cover rounded-lg"
+                    />
+                  )}
+                </div>
                 <input
                   type="text"
                   placeholder="Book Title *"
@@ -258,6 +377,9 @@ function App() {
               <thead>
                 <tr className="bg-gray-50 border-b-2 border-gray-200">
                   <th className="px-8 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider font-poppins">
+                    Cover
+                  </th>
+                  <th className="px-8 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider font-poppins">
                     ID
                   </th>
                   <th className="px-8 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider font-poppins">
@@ -278,11 +400,37 @@ function App() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {books &&
-                  books.map((book) => (
+                {filteredBooks &&
+                  filteredBooks.map((book) => (
                     <tr key={book.id} className="hover:bg-gray-50 transition">
                       {editingId === book.id ? (
                         <>
+                          <td className="px-8 py-4">
+                            <div className="flex flex-col items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openMediaLibrary((url) =>
+                                    setFormData({
+                                      ...formData,
+                                      cover_image: url,
+                                    })
+                                  )
+                                }
+                                className="px-3 py-2 border border-gray-300 rounded-lg hover:border-indigo-500 transition text-xs font-poppins"
+                              >
+                                <Image size={14} className="inline mr-1" />
+                                Change
+                              </button>
+                              {formData.cover_image && (
+                                <img
+                                  src={formData.cover_image}
+                                  alt="Cover"
+                                  className="w-12 h-16 object-cover rounded"
+                                />
+                              )}
+                            </div>
+                          </td>
                           <td className="px-8 py-4 text-sm text-gray-500 font-poppins">
                             #{book.id}
                           </td>
@@ -359,6 +507,19 @@ function App() {
                         </>
                       ) : (
                         <>
+                          <td className="px-8 py-4">
+                            {book.cover_image ? (
+                              <img
+                                src={book.cover_image}
+                                alt={book.title}
+                                className="w-12 h-16 object-cover rounded shadow"
+                              />
+                            ) : (
+                              <div className="w-12 h-16 bg-gray-200 rounded flex items-center justify-center">
+                                <BookOpen className="w-6 h-6 text-gray-400" />
+                              </div>
+                            )}
+                          </td>
                           <td className="px-8 py-4 text-sm text-gray-500 font-poppins">
                             #{book.id}
                           </td>
@@ -401,7 +562,7 @@ function App() {
               </tbody>
             </table>
 
-            {books.length === 0 && (
+            {filteredBooks.length === 0 && !searchQuery && (
               <div className="text-center py-16">
                 <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                 <p className="text-gray-500 text-lg font-poppins">
@@ -409,14 +570,42 @@ function App() {
                 </p>
               </div>
             )}
+
+            {filteredBooks.length === 0 && searchQuery && (
+              <div className="text-center py-16">
+                <Search className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-500 text-lg font-poppins">
+                  No books found matching "
+                  <span className="font-semibold">{searchQuery}</span>"
+                </p>
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="mt-4 text-indigo-600 hover:text-indigo-700 font-semibold"
+                >
+                  Clear search
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Footer */}
           <div className="bg-gray-50 px-8 py-4 border-t border-gray-200">
-            <p className="text-sm text-gray-600 font-poppins">
-              Total Books:{" "}
-              <span className="font-bold text-indigo-600">{books.length}</span>
-            </p>
+            <div className="flex justify-between items-center">
+              <p className="text-sm text-gray-600 font-poppins">
+                Total Books:{" "}
+                <span className="font-bold text-indigo-600">
+                  {books.length}
+                </span>
+              </p>
+              {searchQuery && (
+                <p className="text-sm text-gray-600 font-poppins">
+                  Showing:{" "}
+                  <span className="font-bold text-indigo-600">
+                    {filteredBooks.length}
+                  </span>
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </div>
